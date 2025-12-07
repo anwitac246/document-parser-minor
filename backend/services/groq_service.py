@@ -19,39 +19,51 @@ class GroqService:
         except Exception as e:
             raise Exception(f"GROQ API error: {str(e)}")
     
-    def analyze_document(self, text: str) -> dict:
-        prompt = f"""Analyze this legal document and identify:
+    def analyze_document(self, text: str, user_query: str = None) -> dict:
+    # Build the prompt dynamically depending on whether a user query exists.
+        base_instructions = """
+Analyze this legal document and identify:
 1. Potentially problematic clauses (fishy clauses)
 2. Legal jargon that needs explanation
 3. Risk assessment for each clause
+4. Do not add any emojis.
+"""
 
-Document text:
-{text[:15000]}
+        if user_query:
+            base_instructions += f"\nUser question:\n{user_query}\n\nAlso answer this question directly using the document."
 
-Return ONLY a JSON object with this structure:
-{{
-  "fishy_clauses": [
-    {{
-      "clause_text": "exact text from document",
-      "issue": "what makes this problematic",
-      "risk_level": "low/medium/high",
-      "explanation": "detailed explanation",
-      "recommendation": "what user should do"
-    }}
-  ],
-  "jargon_terms": [
-    {{
-      "term": "legal term found",
-      "context": "how it's used in document",
-      "definition": "simple explanation"
-    }}
-  ],
-  "overall_risk": "low/medium/high",
-  "summary": "brief document summary"
-}}"""
+            prompt = f"""{base_instructions}
+
+        Document text:
+        {text[:15000]}
+
+        Return ONLY a JSON object with this structure:
+        {{
+        "fishy_clauses": [
+            {{
+            "clause_text": "exact text from document",
+            "issue": "what makes this problematic",
+            "risk_level": "low/medium/high",
+            "explanation": "detailed explanation",
+            "recommendation": "what user should do"
+            }}
+        ],
+        "jargon_terms": [
+            {{
+            "term": "legal term found",
+            "context": "how it's used in document",
+            "definition": "simple explanation"
+            }}
+        ],
+        "overall_risk": "low/medium/high",
+        "summary": "brief document summary",
+        "answer_to_user_query": "if user_query was provided, answer it here; otherwise return null"
+        }}
+        """
 
         response = self.generate_response(prompt, temperature=0.2)
         return self._parse_json_response(response)
+
     
     def chat_response(self, message: str, context: list = None) -> str:
         if context:

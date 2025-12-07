@@ -17,7 +17,7 @@ class AnalysisFormatter:
         
         fishy_clauses = analysis.get("fishy_clauses", [])
         if fishy_clauses:
-            md += "## ⚠️ Problematic Clauses Identified\n\n"
+            md += "## Problematic Clauses Identified\n\n"
             
             for i, clause in enumerate(fishy_clauses, 1):
                 risk_emoji = self._get_risk_emoji(clause.get("risk_level", "medium"))

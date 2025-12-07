@@ -1,5 +1,8 @@
 import os
 from typing import List
+from dotenv import load_dotenv
+
+load_dotenv()
 
 class Settings:
     GROQ_API_KEY: str = os.getenv("GROQ_API_KEY", "")
@@ -43,3 +46,10 @@ class Settings:
     }
 
 settings = Settings()
+
+print(f"\n=== Settings Loaded ===")
+print(f"GROQ API Key set: {bool(settings.GROQ_API_KEY)}")
+print(f"GROQ API Key length: {len(settings.GROQ_API_KEY) if settings.GROQ_API_KEY else 0}")
+print(f"Google Service Account set: {bool(settings.GOOGLE_SERVICE_ACCOUNT_JSON)}")
+print(f"Google Service Account preview: {settings.GOOGLE_SERVICE_ACCOUNT_JSON[:50] if settings.GOOGLE_SERVICE_ACCOUNT_JSON else 'None'}...")
+print(f"=" * 40)

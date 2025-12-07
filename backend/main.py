@@ -1,7 +1,9 @@
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import JSONResponse
 from dotenv import load_dotenv
 import os
+import traceback
 
 from routes.chat_routes import router as chat_router
 from routes.document_routes import router as document_router
@@ -18,6 +20,15 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.exception_handler(Exception)
+async def global_exception_handler(request: Request, exc: Exception):
+    print(f"Global error: {str(exc)}")
+    print(traceback.format_exc())
+    return JSONResponse(
+        status_code=500,
+        content={"detail": str(exc)}
+    )
 
 app.include_router(chat_router, prefix="/chat", tags=["chat"])
 app.include_router(document_router, prefix="/document", tags=["document"])

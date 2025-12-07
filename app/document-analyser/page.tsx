@@ -7,12 +7,11 @@ import {
   Copy, Check, Link as LinkIcon
 } from 'lucide-react';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
-import { auth, database } from '../../firebase-config.js';
+import { auth, database } from '../../firebase-config';
 import { ref, push, onValue, remove, set } from 'firebase/database';
 import { useRouter } from 'next/navigation';
-import dynamic from 'next/dynamic';
-
-const Lottie = dynamic(() => import('lottie-react'), { ssr: false });
+import Lottie from 'lottie-react';
+import gradientLoadingAnimation from '@/public/assets/Gradient Loading.json';
 
 interface Message {
   id: number;
@@ -175,17 +174,19 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, darkMode, 
       
       {hoveredTerm && glossaryTerms[hoveredTerm] && (
         <div 
-          className="fixed z-50 p-3 bg-black text-white text-sm rounded-lg shadow-lg max-w-xs pointer-events-none"
+          className="fixed p-3 bg-gray-900 text-white text-sm rounded-lg shadow-2xl max-w-xs border border-gray-700"
           style={{
-            left: `${tooltipPosition.x}px`,
-            top: `${tooltipPosition.y}px`
+            left: `${Math.min(tooltipPosition.x, window.innerWidth - 300)}px`,
+            top: `${Math.max(tooltipPosition.y, 10)}px`,
+            zIndex: 9999,
+            pointerEvents: 'none'
           }}
         >
-          <div className="font-semibold capitalize">{hoveredTerm}</div>
-          <div className="mt-1">{glossaryTerms[hoveredTerm].definition}</div>
+          <div className="font-semibold capitalize mb-1">{hoveredTerm}</div>
+          <div className="text-gray-200">{glossaryTerms[hoveredTerm].definition}</div>
           {glossaryTerms[hoveredTerm].context && (
-            <div className="mt-1 text-xs text-gray-300">
-              {glossaryTerms[hoveredTerm].context}
+            <div className="mt-2 text-xs text-gray-400 italic">
+              Context: {glossaryTerms[hoveredTerm].context}
             </div>
           )}
         </div>
@@ -215,7 +216,6 @@ export default function ChatBot() {
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [glossaryTerms, setGlossaryTerms] = useState<{ [key: string]: { definition: string; context?: string } }>({});
-  const [lottieAnimation, setLottieAnimation] = useState<any>(null);
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -224,11 +224,6 @@ export default function ChatBot() {
 
   useEffect(() => {
     setMounted(true);
-    
-    fetch('/assets/Gradient Loading.json')
-      .then(res => res.json())
-      .then(data => setLottieAnimation(data))
-      .catch(err => console.error('Failed to load animation:', err));
   }, []);
 
   useEffect(() => {
@@ -471,6 +466,8 @@ export default function ChatBot() {
 
     const newMessages = [...messages, userMessage];
     setMessages(newMessages);
+    
+    const currentInputText = inputText;
     setInputText('');
     setUrlInput('');
     setShowUrlInput(false);
@@ -479,6 +476,9 @@ export default function ChatBot() {
 
     try {
       let response;
+      
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
       
       if (uploadedFile || urlInput) {
         const formData = new FormData();
@@ -492,13 +492,18 @@ export default function ChatBot() {
           formData.append('url', urlInput);
         }
         
+        if (currentInputText.trim()) {
+          formData.append('message', currentInputText);
+        }
+        
         response = await fetch('http://localhost:8000/document/analyze', {
           method: 'POST',
-          body: formData
+          body: formData,
+          signal: controller.signal
         });
       } else {
         const formData = new FormData();
-        formData.append('message', inputText);
+        formData.append('message', currentInputText);
         formData.append('temporaryMode', temporaryMode.toString());
         formData.append('userId', user.uid);
 
@@ -512,12 +517,16 @@ export default function ChatBot() {
 
         response = await fetch('http://localhost:8000/chat/', {
           method: 'POST',
-          body: formData
+          body: formData,
+          signal: controller.signal
         });
       }
+      
+      clearTimeout(timeoutId);
 
       if (!response.ok) {
-        throw new Error(`HTTP ${response.status}`);
+        const errorData = await response.json();
+        throw new Error(errorData.detail || `HTTP ${response.status}`);
       }
 
       const data = await response.json();
@@ -543,14 +552,14 @@ export default function ChatBot() {
 
       setUploadedFile(null);
 
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error:', error);
-      setError('Failed to process request');
+      setError(error.message || 'Failed to process request');
       
       const errorMessage: Message = {
         id: Date.now() + 1,
         type: 'bot',
-        content: 'Sorry, I encountered an error. Please try again.',
+        content: `Sorry, I encountered an error: ${error.message}. Please try again.`,
         timestamp: new Date().toISOString()
       };
       
@@ -682,14 +691,12 @@ export default function ChatBot() {
         >
           {messages.length === 0 && (
             <div className="text-center py-12">
-              {lottieAnimation && Lottie && (
-                <div className="flex justify-center items-center h-32 w-32 mx-auto">
-                  <Lottie
-                    animationData={lottieAnimation}
-                    loop={true}
-                  />
-                </div>
-              )}
+              <div className="flex justify-center items-center h-32 w-32 mx-auto">
+                <Lottie
+                  animationData={gradientLoadingAnimation}
+                  loop={true}
+                />
+              </div>
               <h3 className="text-3xl font-extrabold mb-2 bg-clip-text text-transparent bg-gradient-to-r from-[#62D5DE] to-[#1E8DD0]">
                 Confused by Legal Jargon?
               </h3>
