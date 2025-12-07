@@ -9,6 +9,10 @@ class Settings:
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
     GOOGLE_SERVICE_ACCOUNT_JSON: str = os.getenv("GOOGLE_SERVICE_ACCOUNT_JSON", "")
     
+    # Add ElevenLabs configuration
+    ELEVENLABS_API_KEY: str = os.getenv("ELEVENLABS_API_KEY", "")
+    ELEVENLABS_VOICE_ID: str = os.getenv("ELEVENLABS_VOICE_ID", "21m00Tcm4TlvDq8ikWAM")
+    
     ALLOWED_ORIGINS: List[str] = ["http://localhost:3000"]
     
     MAX_FILE_SIZE: int = 10 * 1024 * 1024
@@ -52,4 +56,6 @@ print(f"GROQ API Key set: {bool(settings.GROQ_API_KEY)}")
 print(f"GROQ API Key length: {len(settings.GROQ_API_KEY) if settings.GROQ_API_KEY else 0}")
 print(f"Google Service Account set: {bool(settings.GOOGLE_SERVICE_ACCOUNT_JSON)}")
 print(f"Google Service Account preview: {settings.GOOGLE_SERVICE_ACCOUNT_JSON[:50] if settings.GOOGLE_SERVICE_ACCOUNT_JSON else 'None'}...")
+print(f"ElevenLabs API Key set: {bool(settings.ELEVENLABS_API_KEY)}")
+print(f"ElevenLabs API Key length: {len(settings.ELEVENLABS_API_KEY) if settings.ELEVENLABS_API_KEY else 0}")
 print(f"=" * 40)

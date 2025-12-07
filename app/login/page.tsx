@@ -210,7 +210,7 @@ export default function Login() {
       }
       
       // Redirect to dashboard
-      window.location.href = '/dashboard';
+      window.location.href = '/document-analyser';
     } catch (error: any) {
       console.error('Google sign-in error:', error);
       setErrors({ general: error.message });

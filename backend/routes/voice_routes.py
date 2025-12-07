@@ -1,44 +1,95 @@
 from fastapi import APIRouter, UploadFile, File, Form, HTTPException
-from fastapi.responses import Response
+from fastapi.responses import Response, JSONResponse
 from typing import Optional
 import httpx
 import io
 from services.groq_service import groq_service
 from services.document_processor import document_processor
 from config.settings import settings
+import speech_recognition as sr
+from pydub import AudioSegment
+import tempfile
+import os
+
 
 router = APIRouter()
 
-@router.post("/analyze-voice")
-async def analyze_with_voice(
-    userId: str = Form(...),
+@router.post("/transcribe")
+async def transcribe_audio_endpoint(
     audio: UploadFile = File(...),
-    document: Optional[UploadFile] = File(None),
 ):
     """
-    Process voice input with optional document
-    1. Transcribe audio to text using Groq Whisper
-    2. Analyze document with the transcribed query
-    3. Generate conversational response
-    4. Convert response to speech using ElevenLabs
+    Step 1: Transcribe audio to text only
+    Returns the transcribed text immediately when user stops recording
     """
+    temp_wav_path = None
+    
     try:
-        print(f"\n=== Voice Analysis Request ===")
-        print(f"User ID: {userId}")
-        print(f"Has audio: {audio is not None}")
-        print(f"Has document: {document is not None}")
+        print(f"\n=== Transcription Request ===")
         
-        # Step 1: Transcribe audio using Groq Whisper
+        # Read and convert audio to WAV
         audio_bytes = await audio.read()
         print(f"Audio size: {len(audio_bytes)} bytes")
         
-        transcription = await transcribe_audio(audio_bytes, audio.filename)
+        # Create temp file for audio conversion
+        with tempfile.NamedTemporaryFile(delete=False, suffix='.wav') as temp_audio:
+            temp_wav_path = temp_audio.name
+            
+            # Convert to WAV format using pydub
+            try:
+                audio_segment = AudioSegment.from_file(io.BytesIO(audio_bytes))
+                audio_segment.export(temp_wav_path, format='wav')
+                print(f"Audio converted to WAV")
+            except Exception as e:
+                print(f"Audio conversion error: {str(e)}")
+                raise HTTPException(status_code=400, detail="Failed to process audio file")
+        
+        # Transcribe using speech_recognition
+        transcription = transcribe_audio_local(temp_wav_path)
         print(f"Transcribed text: {transcription}")
         
         if not transcription:
-            raise HTTPException(status_code=400, detail="Could not transcribe audio")
+            raise HTTPException(status_code=400, detail="Could not transcribe audio. Please speak clearly.")
         
-        # Step 2: Process document if provided
+        return JSONResponse({
+            "success": True,
+            "transcription": transcription
+        })
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"EXCEPTION: {str(e)}")
+        import traceback
+        print(traceback.format_exc())
+        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
+    
+    finally:
+        # Cleanup temp file
+        if temp_wav_path and os.path.exists(temp_wav_path):
+            try:
+                os.unlink(temp_wav_path)
+            except:
+                pass
+
+
+@router.post("/analyze-and-speak")
+async def analyze_and_speak(
+    userId: str = Form(...),
+    query: str = Form(...),
+    document: Optional[UploadFile] = File(None),
+):
+    """
+    Step 2: Analyze document with query and return audio response
+    Takes the transcribed text and document, returns speech audio
+    """
+    try:
+        print(f"\n=== Analysis & TTS Request ===")
+        print(f"User ID: {userId}")
+        print(f"Query: {query}")
+        print(f"Has document: {document is not None}")
+        
+        # Process document if provided
         document_text = ""
         source_name = ""
         
@@ -58,21 +109,21 @@ async def analyze_with_voice(
             source_name = document.filename
             print(f"Document text length: {len(document_text)}")
         
-        # Step 3: Generate conversational response
+        # Generate conversational response
         if document_text:
-            # Analyze document with voice query
+            # Analyze document with query
             analysis = groq_service.analyze_document_voice(
                 document_text, 
-                transcription
+                query
             )
             response_text = analysis.get("conversational_response", "")
         else:
             # Just chat without document
-            response_text = groq_service.chat_response(transcription)
+            response_text = groq_service.chat_response(query)
         
         print(f"Response generated: {len(response_text)} chars")
         
-        # Step 4: Convert to speech using ElevenLabs
+        # Convert to speech using ElevenLabs
         audio_response = await text_to_speech(response_text)
         
         print("SUCCESS: Returning voice response")
@@ -82,8 +133,7 @@ async def analyze_with_voice(
             content=audio_response,
             media_type="audio/mpeg",
             headers={
-                "X-Transcription": transcription,
-                "X-Response-Text": response_text[:500],  # First 500 chars for preview
+                "X-Response-Text": response_text,
                 "X-Source": source_name if source_name else "none"
             }
         )
@@ -94,30 +144,37 @@ async def analyze_with_voice(
         print(f"EXCEPTION: {str(e)}")
         import traceback
         print(traceback.format_exc())
-        raise HTTPException(status_code=500, detail=f"Voice analysis failed: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Analysis failed: {str(e)}")
 
 
-async def transcribe_audio(audio_bytes: bytes, filename: str) -> str:
-    """Transcribe audio using Groq Whisper API"""
+def transcribe_audio_local(wav_path: str) -> str:
+    """
+    Transcribe audio using speech_recognition library (Google Speech Recognition - FREE)
+    """
     try:
-        from groq import Groq
-        client = Groq(api_key=settings.GROQ_API_KEY)
+        recognizer = sr.Recognizer()
         
-        # Create file-like object
-        audio_file = io.BytesIO(audio_bytes)
-        audio_file.name = filename
-        
-        transcription = client.audio.transcriptions.create(
-            file=(filename, audio_file),
-            model="whisper-large-v3",
-            response_format="text"
-        )
-        
-        return transcription
+        with sr.AudioFile(wav_path) as source:
+            # Adjust for ambient noise
+            recognizer.adjust_for_ambient_noise(source, duration=0.5)
+            
+            # Record the audio
+            audio_data = recognizer.record(source)
+            
+            # Use Google Speech Recognition (free, no API key needed)
+            try:
+                text = recognizer.recognize_google(audio_data)
+                return text
+            except sr.UnknownValueError:
+                print("Google Speech Recognition could not understand audio")
+                return ""
+            except sr.RequestError as e:
+                print(f"Could not request results from Google Speech Recognition service; {e}")
+                return ""
     
     except Exception as e:
         print(f"Transcription error: {str(e)}")
-        raise Exception(f"Failed to transcribe audio: {str(e)}")
+        return ""
 
 
 async def text_to_speech(text: str) -> bytes:
@@ -136,7 +193,7 @@ async def text_to_speech(text: str) -> bytes:
         
         data = {
             "text": text,
-            "model_id": "eleven_monolingual_v1",
+            "model_id": "eleven_turbo_v2_5",  # Changed from eleven_monolingual_v1
             "voice_settings": {
                 "stability": 0.5,
                 "similarity_boost": 0.75
