@@ -20,6 +20,48 @@ class GroqService:
         except Exception as e:
             raise Exception(f"GROQ API error: {str(e)}")
     
+    def analyze_document_voice(self, text: str, user_query: str) -> dict:
+        """
+        Analyze document for voice interface - returns conversational response
+        """
+        print(f"Voice query: {user_query}")
+        
+        prompt = f"""You are a friendly legal assistant having a natural conversation. 
+A user has uploaded a document and asked: "{user_query}"
+
+DOCUMENT TEXT:
+{text[:15000]}
+
+Provide a warm, conversational response as if you're speaking to them in person. 
+
+Guidelines:
+- Speak naturally like a human, not like a robot
+- Use simple, everyday language (no legal jargon unless necessary)
+- Break down complex ideas into easy-to-understand explanations
+- Be warm and reassuring
+- Keep it concise but thorough (aim for 2-3 paragraphs)
+- If there are risks, explain them clearly but don't be alarmist
+- Use phrases like "So basically...", "What this means is...", "Here's the thing..."
+- NO bullet points, NO numbered lists, NO formatting
+- Write in flowing paragraphs as if speaking
+
+Return a JSON object with:
+{{
+    "conversational_response": "your natural, spoken response here",
+    "key_points": ["important point 1", "important point 2"],
+    "risk_level": "low/medium/high"
+}}
+"""
+        
+        response = self.generate_response(prompt, temperature=0.7)
+        parsed = self._parse_json_response(response)
+        
+        # Fallback if parsing fails
+        if not parsed.get("conversational_response"):
+            parsed["conversational_response"] = "I've reviewed the document. Let me explain what I found in simple terms. " + response[:500]
+        
+        return parsed
+    
     def _is_form_filling_query(self, query: str, document_text: str) -> bool:
         """Detect if user is asking about form filling"""
         if not query:
@@ -27,17 +69,14 @@ class GroqService:
         
         query_lower = query.lower()
         
-        # Keywords that indicate form filling questions
         form_keywords = [
             'fill', 'form', 'complete', 'submit', 'enter', 
             'how to', 'guide', 'instructions', 'steps',
             'filling', 'completing', 'application'
         ]
         
-        # Check if query contains form-related keywords
         has_form_keyword = any(keyword in query_lower for keyword in form_keywords)
         
-        # Check if document appears to be a form (has fields, input requirements, etc.)
         form_indicators = ['form', 'application', 'please provide', 'enter your', 'fill in', 'required information']
         is_likely_form = any(indicator in document_text.lower()[:2000] for indicator in form_indicators)
         
@@ -46,13 +85,11 @@ class GroqService:
     def analyze_document(self, text: str, user_query: str = None) -> dict:
         """Main document analysis with form filling support"""
         
-        # Detect if this is a form filling query
         is_form_query = self._is_form_filling_query(user_query or "", text)
         
         print(f"User query: {user_query}")
         print(f"Is form query: {is_form_query}")
         
-        # Base analysis instructions
         base_instructions = """
 You are a legal document analyzer. Analyze this document and provide:
 
@@ -68,7 +105,6 @@ CRITICAL FORMATTING RULES:
 - Keep explanations clear and concise
 """
 
-        # Add specific instructions based on query type
         if is_form_query:
             base_instructions += """
 
@@ -103,19 +139,16 @@ USER QUESTION: {user_query}
 Answer this specific question clearly and directly using information from the document.
 """
 
-        # Build the answer_to_user_query part
         if user_query and not is_form_query:
             answer_part = '"direct answer to user query"'
         else:
             answer_part = 'null'
         
-        # Build the form_filling_guide part
         if is_form_query:
             form_guide_template = '{"purpose": "explain what this form is for", "steps": [{"step_number": 1, "field_name": "field name", "description": "what to enter", "example_value": "realistic example", "tips": "important notes"}], "warnings": ["warning about risky clauses"], "general_tips": ["best practice 1", "best practice 2"]}'
         else:
             form_guide_template = 'null'
         
-        # Construct the full prompt
         prompt = f"""{base_instructions}
 
 DOCUMENT TEXT:
@@ -148,13 +181,9 @@ Return ONLY a valid JSON object with this exact structure:
 IMPORTANT: Ensure the JSON is valid and complete. Do not truncate any fields.
 """
 
-        # Get response from GROQ
         response = self.generate_response(prompt, temperature=0.2)
-        
-        # Parse and clean response
         parsed = self._parse_json_response(response)
         
-        # If form query but no guide generated, create a basic one
         if is_form_query and not parsed.get("form_filling_guide"):
             print("WARNING: Form guide not generated by AI, creating fallback")
             parsed["form_filling_guide"] = {
@@ -198,7 +227,6 @@ IMPORTANT: Ensure the JSON is valid and complete. Do not truncate any fields.
         """Parse JSON response and remove any markdown formatting"""
         cleaned = response.strip()
         
-        # Remove markdown code blocks
         if cleaned.startswith('```json'):
             cleaned = cleaned[7:]
         if cleaned.startswith('```'):
@@ -210,7 +238,6 @@ IMPORTANT: Ensure the JSON is valid and complete. Do not truncate any fields.
         
         try:
             parsed = json.loads(cleaned)
-            # Remove emojis from the parsed content
             return self._remove_emojis(parsed)
         except json.JSONDecodeError as e:
             print(f"JSON Parse Error: {e}")
@@ -230,18 +257,17 @@ IMPORTANT: Ensure the JSON is valid and complete. Do not truncate any fields.
         elif isinstance(obj, list):
             return [self._remove_emojis(item) for item in obj]
         elif isinstance(obj, str):
-            # Remove emoji characters
             emoji_pattern = re.compile("["
-                u"\U0001F600-\U0001F64F"  # emoticons
-                u"\U0001F300-\U0001F5FF"  # symbols & pictographs
-                u"\U0001F680-\U0001F6FF"  # transport & map symbols
-                u"\U0001F1E0-\U0001F1FF"  # flags
+                u"\U0001F600-\U0001F64F"
+                u"\U0001F300-\U0001F5FF"
+                u"\U0001F680-\U0001F6FF"
+                u"\U0001F1E0-\U0001F1FF"
                 u"\U00002702-\U000027B0"
                 u"\U000024C2-\U0001F251"
-                u"\u26A0-\u26FF"  # warning signs
-                u"\u2B50"  # star
-                u"\u2705"  # checkmark
-                u"\u274C"  # cross mark
+                u"\u26A0-\u26FF"
+                u"\u2B50"
+                u"\u2705"
+                u"\u274C"
                 "]+", flags=re.UNICODE)
             return emoji_pattern.sub('', obj)
         return obj
