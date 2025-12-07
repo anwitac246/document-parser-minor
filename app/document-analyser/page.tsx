@@ -57,7 +57,7 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, darkMode, 
     Object.keys(glossaryTerms).forEach(term => {
       const regex = new RegExp(`\\b${term}\\b`, 'gi');
       highlightedText = highlightedText.replace(regex, 
-        `<span class="legal-term cursor-help border-b-2 border-dotted border-blue-500 text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-900" data-term="${term}">$&</span>`
+        `<span class="legal-term cursor-help border-b-2 border-dotted ${darkMode ? 'border-blue-400 text-blue-400 hover:bg-blue-950' : 'border-blue-500 text-blue-600 hover:bg-blue-50'}" data-term="${term}">$&</span>`
       );
     });
     
@@ -174,18 +174,18 @@ const MarkdownRenderer: React.FC<MarkdownRendererProps> = ({ content, darkMode, 
       
       {hoveredTerm && glossaryTerms[hoveredTerm] && (
         <div 
-          className="fixed p-3 bg-gray-900 text-white text-sm rounded-lg shadow-2xl max-w-xs border border-gray-700"
+          className="fixed p-4 bg-black text-white text-sm rounded-lg shadow-2xl max-w-sm border-2 border-blue-500"
           style={{
-            left: `${Math.min(tooltipPosition.x, window.innerWidth - 300)}px`,
+            left: `${Math.min(tooltipPosition.x, window.innerWidth - 350)}px`,
             top: `${Math.max(tooltipPosition.y, 10)}px`,
-            zIndex: 9999,
+            zIndex: 99999,
             pointerEvents: 'none'
           }}
         >
-          <div className="font-semibold capitalize mb-1">{hoveredTerm}</div>
-          <div className="text-gray-200">{glossaryTerms[hoveredTerm].definition}</div>
+          <div className="font-bold capitalize mb-2 text-blue-400 text-base">{hoveredTerm}</div>
+          <div className="text-gray-100 leading-relaxed">{glossaryTerms[hoveredTerm].definition}</div>
           {glossaryTerms[hoveredTerm].context && (
-            <div className="mt-2 text-xs text-gray-400 italic">
+            <div className="mt-3 text-xs text-blue-300 italic border-t border-blue-900 pt-2">
               Context: {glossaryTerms[hoveredTerm].context}
             </div>
           )}
@@ -478,7 +478,7 @@ export default function ChatBot() {
       let response;
       
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 60000); // 60 second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 60000);
       
       if (uploadedFile || urlInput) {
         const formData = new FormData();
@@ -580,7 +580,7 @@ export default function ChatBot() {
 
   if (!mounted || loading) {
     return (
-      <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+      <div className={`min-h-screen flex items-center justify-center ${darkMode ? 'bg-black' : 'bg-gray-50'}`}>
         <div className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-blue-500 mx-auto"></div>
           <p className={`mt-4 ${darkMode ? 'text-white' : 'text-gray-900'}`}>Loading...</p>
@@ -590,7 +590,7 @@ export default function ChatBot() {
   }
 
   return (
-    <div className={`min-h-screen flex ${darkMode ? 'bg-gray-900' : 'bg-gray-50'}`}>
+    <div className={`min-h-screen flex ${darkMode ? 'bg-black' : 'bg-gray-50'}`}>
       {error && (
         <div className="fixed top-4 right-4 bg-red-500 text-white px-4 py-2 rounded-lg shadow-lg z-50">
           <div className="flex items-center justify-between">
@@ -600,13 +600,13 @@ export default function ChatBot() {
         </div>
       )}
 
-      <div className={`fixed top-0 left-0 h-full ${showSidebar ? 'w-64' : 'w-18'} transition-all duration-300 ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'} border-r flex flex-col z-40`}>
+      <div className={`fixed top-0 left-0 h-full ${showSidebar ? 'w-64' : 'w-18'} transition-all duration-300 ${darkMode ? 'bg-black border-blue-500' : 'bg-white border-gray-200'} border-r flex flex-col z-40`}>
         <div className="p-4">
           <button
             onClick={() => setShowSidebar(!showSidebar)}
-            className={`w-full flex items-center space-x-2 p-2 rounded-lg ${darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+            className={`w-full flex items-center space-x-2 p-2 rounded-lg ${darkMode ? 'hover:bg-blue-950 text-white' : 'hover:bg-gray-100'}`}
           >
-            <Menu className={`h-6 w-6 ${darkMode ? 'text-white' : 'text-gray-900'}`} />
+            <Menu className={`h-6 w-6 ${darkMode ? 'text-blue-400' : 'text-gray-900'}`} />
             {showSidebar && <span className={`font-bold ${darkMode ? 'text-white' : 'text-gray-900'}`}>Legal Assistant</span>}
           </button>
         </div>
@@ -614,7 +614,7 @@ export default function ChatBot() {
         <div className="p-4">
           <button
             onClick={createNewChat}
-            className="w-full flex items-center space-x-2 p-3 rounded-lg bg-[#1E8DD0] hover:bg-[#43B3D8] text-white"
+            className={`w-full flex items-center space-x-2 p-3 rounded-lg ${darkMode ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-[#1E8DD0] hover:bg-[#43B3D8] text-white'}`}
           >
             <MessageCirclePlus className="h-5 w-5" />
             {showSidebar && <span>New Chat</span>}
@@ -627,9 +627,9 @@ export default function ChatBot() {
               <div key={session.id} className="group relative">
                 <button
                   onClick={() => loadChat(session.id)}
-                  className={`w-full text-left p-3 rounded-lg ${currentSessionId === session.id
-                    ? darkMode ? 'bg-[#CBE5F6]' : 'bg-[#D2E5F0]'
-                    : darkMode ? 'hover:bg-gray-700' : 'hover:bg-gray-100'}`}
+                  className={`w-full text-left p-3 rounded-lg transition-colors ${currentSessionId === session.id
+                    ? darkMode ? 'bg-blue-950 border border-blue-500 text-white' : 'bg-[#D2E5F0]'
+                    : darkMode ? 'hover:bg-blue-950 text-gray-200' : 'hover:bg-gray-100'}`}
                 >
                   <div className={`font-medium truncate ${darkMode ? 'text-white' : 'text-gray-900'}`}>
                     {session.title}
@@ -637,7 +637,7 @@ export default function ChatBot() {
                 </button>
                 <button
                   onClick={() => deleteChat(session.id)}
-                  className={`absolute right-2 top-2 opacity-0 group-hover:opacity-100 p-1 rounded ${darkMode ? 'hover:bg-gray-600' : 'hover:bg-gray-200'}`}
+                  className={`absolute right-2 top-2 opacity-0 group-hover:opacity-100 p-1 rounded transition-opacity ${darkMode ? 'hover:bg-blue-900 text-red-400' : 'hover:bg-gray-200 text-red-500'}`}
                 >
                   <Trash2 className="h-4 w-4" />
                 </button>
@@ -649,9 +649,9 @@ export default function ChatBot() {
         <div className="p-4">
           <button
             onClick={() => setDarkMode(!darkMode)}
-            className={`w-full flex items-center space-x-2 p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'}`}
+            className={`w-full flex items-center space-x-2 p-3 rounded-lg transition-colors ${darkMode ? 'bg-blue-950 hover:bg-blue-900 border border-blue-500' : 'bg-gray-100 hover:bg-gray-200'}`}
           >
-            {darkMode ? <Sun className="h-5 w-5 text-white" /> : <Moon className="h-5 w-5" />}
+            {darkMode ? <Sun className="h-5 w-5 text-blue-400" /> : <Moon className="h-5 w-5" />}
             {showSidebar && <span className={darkMode ? 'text-white' : 'text-gray-900'}>{darkMode ? 'Light' : 'Dark'} Mode</span>}
           </button>
         </div>
@@ -659,7 +659,7 @@ export default function ChatBot() {
         <div className="p-4">
           <button
             onClick={handleSignOut}
-            className={`w-full flex items-center space-x-2 p-2 rounded-lg ${darkMode ? 'bg-gray-700 text-red-400' : 'bg-gray-100 text-red-500'}`}
+            className={`w-full flex items-center space-x-2 p-2 rounded-lg transition-colors ${darkMode ? 'bg-red-950 hover:bg-red-900 text-red-400 border border-red-500' : 'bg-gray-100 text-red-500 hover:bg-red-50'}`}
           >
             <LogOut className="h-4 w-4" />
             {showSidebar && <span>Sign Out</span>}
@@ -669,25 +669,25 @@ export default function ChatBot() {
 
       <div className={`flex-1 flex flex-col transition-all duration-300 ${showSidebar ? 'ml-64' : 'ml-18'} pb-24 pt-16`}>
         <div className={`fixed top-0 right-0 left-0 transition-all duration-300 ${showSidebar ? 'ml-64' : 'ml-18'} z-30`}>
-          <div className={`p-4 border-b ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}
-            style={{
+          <div className={`p-4 border-b ${darkMode ? 'bg-black border-blue-500' : 'bg-white border-gray-200'}`}
+            style={!darkMode ? {
               backgroundImage: "url(/chatbot-bg.png)",
               backgroundSize: '100% 100%',
               backgroundPosition: 'center'
-            }}
+            } : {}}
           >
-            <h1 className={`text-xl font-semibold ${darkMode ? 'text-white' : 'text-[#1E8DD0]'}`}>
+            <h1 className={`text-xl font-semibold ${darkMode ? 'text-blue-400' : 'text-[#1E8DD0]'}`}>
               Legal Document Assistant
             </h1>
           </div>
         </div>
 
         <div className="flex-1 overflow-y-auto p-4"
-          style={{
+          style={!darkMode ? {
             backgroundImage: "url(/chatbot-bg.png)",
             backgroundSize: '100% 100%',
             backgroundPosition: 'center'
-          }}
+          } : { backgroundColor: '#000000' }}
         >
           {messages.length === 0 && (
             <div className="text-center py-12">
@@ -709,13 +709,13 @@ export default function ChatBot() {
           {messages.map((message) => (
             <div key={message.id} className={`flex ${message.type === 'user' ? 'justify-end' : 'justify-start'} mb-4`}>
               <div className={`max-w-xs lg:max-w-2xl px-4 py-3 rounded-2xl ${message.type === 'user'
-                ? 'bg-[#37A6D5] text-white'
-                : darkMode ? 'bg-gray-700 text-white' : 'bg-white text-gray-900 border border-[#37A6D5]'}`}>
+                ? darkMode ? 'bg-blue-600 text-white border border-blue-400' : 'bg-[#37A6D5] text-white'
+                : darkMode ? 'bg-gray-900 text-white border-2 border-blue-500' : 'bg-white text-gray-900 border border-[#37A6D5]'}`}>
                 <div className="flex items-start space-x-2">
-                  {message.type === 'bot' && <Bot className="h-5 w-5 mt-0.5 flex-shrink-0 text-[#3088ae]" />}
+                  {message.type === 'bot' && <Bot className={`h-5 w-5 mt-0.5 flex-shrink-0 ${darkMode ? 'text-blue-400' : 'text-[#3088ae]'}`} />}
                   <div className="flex-1">
                     {message.file && (
-                      <div className="mb-2 p-2 rounded flex items-center space-x-2 bg-gray-100 text-black">
+                      <div className={`mb-2 p-2 rounded flex items-center space-x-2 ${darkMode ? 'bg-blue-950 text-blue-200 border border-blue-500' : 'bg-gray-100 text-black'}`}>
                         <File className="h-4 w-4" />
                         <span className="text-sm">{message.file.name}</span>
                       </div>
@@ -732,7 +732,7 @@ export default function ChatBot() {
                     {message.type === 'bot' && (
                       <button
                         onClick={() => isSpeaking ? stopSpeaking() : speakText(message.content)}
-                        className="mt-2 p-1 rounded hover:bg-gray-600"
+                        className={`mt-2 p-1 rounded transition-colors ${darkMode ? 'hover:bg-blue-900 text-blue-400' : 'hover:bg-gray-200'}`}
                       >
                         {isSpeaking ? <VolumeX className="h-4 w-4" /> : <Volume2 className="h-4 w-4" />}
                       </button>
@@ -745,12 +745,12 @@ export default function ChatBot() {
 
           {isTyping && (
             <div className="flex justify-start">
-              <div className={`px-4 py-3 rounded-2xl flex items-center space-x-2 ${darkMode ? 'bg-gray-700' : 'bg-white border'}`}>
-                <Bot className="h-5 w-5" />
+              <div className={`px-4 py-3 rounded-2xl flex items-center space-x-2 ${darkMode ? 'bg-gray-900 border-2 border-blue-500' : 'bg-white border'}`}>
+                <Bot className={`h-5 w-5 ${darkMode ? 'text-blue-400' : ''}`} />
                 <div className="flex space-x-1">
-                  <div className="w-2 h-2 rounded-full animate-bounce bg-blue-500" style={{ animationDelay: '0ms' }} />
-                  <div className="w-2 h-2 rounded-full animate-bounce bg-blue-500" style={{ animationDelay: '150ms' }} />
-                  <div className="w-2 h-2 rounded-full animate-bounce bg-blue-500" style={{ animationDelay: '300ms' }} />
+                  <div className={`w-2 h-2 rounded-full animate-bounce ${darkMode ? 'bg-blue-400' : 'bg-blue-500'}`} style={{ animationDelay: '0ms' }} />
+                  <div className={`w-2 h-2 rounded-full animate-bounce ${darkMode ? 'bg-blue-400' : 'bg-blue-500'}`} style={{ animationDelay: '150ms' }} />
+                  <div className={`w-2 h-2 rounded-full animate-bounce ${darkMode ? 'bg-blue-400' : 'bg-blue-500'}`} style={{ animationDelay: '300ms' }} />
                 </div>
               </div>
             </div>
@@ -761,20 +761,20 @@ export default function ChatBot() {
       </div>
 
       <div className={`fixed bottom-0 right-0 left-0 transition-all duration-300 ${showSidebar ? 'ml-64' : 'ml-18'} z-30`}>
-        <div className={`p-4 border-t ${darkMode ? 'bg-gray-800 border-gray-700' : 'bg-white border-gray-200'}`}
-          style={{
+        <div className={`p-4 border-t ${darkMode ? 'bg-black border-blue-500' : 'bg-white border-gray-200'}`}
+          style={!darkMode ? {
             backgroundImage: "url(/chatbot-bg.png)",
             backgroundSize: '100% 100%',
             backgroundPosition: 'center'
-          }}
+          } : {}}
         >
           {uploadedFile && (
-            <div className={`mb-3 p-3 rounded-lg ${darkMode ? 'bg-gray-700' : 'bg-gray-100'} flex items-center justify-between`}>
+            <div className={`mb-3 p-3 rounded-lg flex items-center justify-between ${darkMode ? 'bg-blue-950 border border-blue-500 text-white' : 'bg-gray-100'}`}>
               <div className="flex items-center space-x-2">
-                <File className="h-5 w-5" />
+                <File className={`h-5 w-5 ${darkMode ? 'text-blue-400' : ''}`} />
                 <span className="text-sm">{uploadedFile.name}</span>
               </div>
-              <button onClick={() => setUploadedFile(null)} className="p-1 rounded hover:bg-gray-600">×</button>
+              <button onClick={() => setUploadedFile(null)} className={`p-1 rounded transition-colors ${darkMode ? 'hover:bg-blue-900 text-blue-400' : 'hover:bg-gray-200'}`}>×</button>
             </div>
           )}
 
@@ -785,7 +785,7 @@ export default function ChatBot() {
                 value={urlInput}
                 onChange={(e) => setUrlInput(e.target.value)}
                 placeholder="Enter URL to analyze..."
-                className={`w-full px-4 py-2 rounded-lg border ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+                className={`w-full px-4 py-2 rounded-lg border transition-colors ${darkMode ? 'bg-gray-900 border-blue-500 text-white placeholder-gray-400' : 'bg-white border-gray-300'}`}
               />
             </div>
           )}
@@ -793,21 +793,21 @@ export default function ChatBot() {
           <div className="flex items-center space-x-3">
             <button
               onClick={() => fileInputRef.current?.click()}
-              className={`p-3 rounded-full ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'hover:bg-gray-100'}`}
+              className={`p-3 rounded-full transition-colors ${darkMode ? 'bg-blue-950 hover:bg-blue-900 border border-blue-500 text-blue-400' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
             >
               <Upload className="h-5 w-5" />
             </button>
 
             <button
               onClick={() => setShowUrlInput(!showUrlInput)}
-              className={`p-3 rounded-full ${darkMode ? 'bg-gray-700 hover:bg-gray-600' : 'hover:bg-gray-100'}`}
+              className={`p-3 rounded-full transition-colors ${darkMode ? 'bg-blue-950 hover:bg-blue-900 border border-blue-500 text-blue-400' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
             >
               <LinkIcon className="h-5 w-5" />
             </button>
 
             <button
               onClick={isListening ? stopListening : startListening}
-              className={`p-3 rounded-full ${isListening ? 'bg-red-500' : darkMode ? 'bg-gray-700' : 'hover:bg-gray-100'}`}
+              className={`p-3 rounded-full transition-colors ${isListening ? 'bg-red-500 text-white' : darkMode ? 'bg-blue-950 hover:bg-blue-900 border border-blue-500 text-blue-400' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
             >
               {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
             </button>
@@ -822,14 +822,16 @@ export default function ChatBot() {
                 }
               }}
               placeholder="Type your message..."
-              className={`flex-1 px-4 py-3 rounded-2xl border resize-none ${darkMode ? 'bg-gray-700 border-gray-600 text-white' : 'bg-white border-gray-300'}`}
+              className={`flex-1 px-4 py-3 rounded-2xl border resize-none transition-colors ${darkMode ? 'bg-gray-900 border-blue-500 text-white placeholder-gray-400' : 'bg-white border-gray-300'}`}
               rows={1}
             />
 
             <button
               onClick={sendMessage}
               disabled={!inputText.trim() && !uploadedFile && !urlInput.trim()}
-              className={`p-3 rounded-full ${inputText.trim() || uploadedFile || urlInput.trim() ? 'bg-[#43B3D8] hover:bg-[#37A6D5] text-white' : 'bg-gray-300 text-gray-500'}`}
+              className={`p-3 rounded-full transition-colors ${inputText.trim() || uploadedFile || urlInput.trim() 
+                ? darkMode ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-[#43B3D8] hover:bg-[#37A6D5] text-white' 
+                : darkMode ? 'bg-gray-800 text-gray-600 border border-gray-700' : 'bg-gray-300 text-gray-500'}`}
             >
               <Send className="h-5 w-5" />
             </button>
