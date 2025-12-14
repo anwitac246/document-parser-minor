@@ -25,9 +25,8 @@ class CommunityManager:
         self.typing_users: Dict[str, Set[str]] = {}
         self.user_info: Dict[str, dict] = {}
     
-    async def connect(self, websocket: WebSocket, community_id: str, user_id: str):
-        await websocket.accept()
-        
+    def add_connection(self, community_id: str, user_id: str, websocket: WebSocket):
+        """Add a connection without accepting (accept is done in endpoint)"""
         if community_id not in self.active_connections:
             self.active_connections[community_id] = {}
             self.community_messages[community_id] = []
@@ -35,7 +34,7 @@ class CommunityManager:
         
         self.active_connections[community_id][user_id] = websocket
         logger.info(f"User {user_id} connected to community {community_id}")
-        
+    
     def disconnect(self, community_id: str, user_id: str):
         if community_id in self.active_connections:
             self.active_connections[community_id].pop(user_id, None)
@@ -48,10 +47,12 @@ class CommunityManager:
             
             logger.info(f"User {user_id} disconnected from community {community_id}")
     
-    async def broadcast_message(self, community_id: str, message: dict):
+    async def broadcast_message(self, community_id: str, message: dict, exclude_user: str = None):
         if community_id in self.active_connections:
             dead_connections = []
             for user_id, connection in self.active_connections[community_id].items():
+                if exclude_user and user_id == exclude_user:
+                    continue
                 try:
                     await connection.send_json(message)
                 except Exception as e:
@@ -130,66 +131,64 @@ async def websocket_endpoint(websocket: WebSocket, community_id: str):
     user_name = None
     
     try:
-        # Accept connection with temporary ID
-        await manager.connect(websocket, community_id, "temp")
+        # Accept connection ONCE at the start
+        await websocket.accept()
         
+        # Wait for hello message
+        data = await websocket.receive_json()
+        
+        if data.get("type") != "hello":
+            await websocket.send_json({
+                "type": "error",
+                "error": "First message must be 'hello'"
+            })
+            await websocket.close()
+            return
+        
+        user_id = data.get("userId")
+        user_name = data.get("userName", "Anonymous")
+        
+        if not user_id:
+            await websocket.send_json({
+                "type": "error",
+                "error": "userId is required"
+            })
+            await websocket.close()
+            return
+        
+        # Add connection to manager
+        manager.add_connection(community_id, user_id, websocket)
+        
+        # Store user info
+        manager.user_info[user_id] = {
+            "userName": user_name,
+            "communityName": data.get("communityName", ""),
+            "communityImage": data.get("communityImage", ""),
+            "communityDescription": data.get("communityDescription", "")
+        }
+        
+        # Send ready signal to this user
         await websocket.send_json({
-            "type": "connected",
-            "message": "WebSocket connection established",
+            "type": "ready",
+            "userId": user_id,
             "communityId": community_id
         })
         
+        # Notify others that user joined
+        await manager.broadcast_message(community_id, {
+            "type": "user_joined",
+            "userId": user_id,
+            "userName": user_name
+        }, exclude_user=user_id)
+        
+        logger.info(f"User {user_name} ({user_id}) joined community {community_id}")
+        
+        # Main message loop
         while True:
             data = await websocket.receive_json()
             message_type = data.get("type")
             
-            if message_type == "hello":
-                user_id = data.get("userId")
-                user_name = data.get("userName", "Anonymous")
-                
-                if not user_id:
-                    await websocket.send_json({
-                        "type": "error",
-                        "error": "userId is required"
-                    })
-                    await websocket.close()
-                    return
-                
-                # Replace temp connection with real user ID
-                manager.disconnect(community_id, "temp")
-                await manager.connect(websocket, community_id, user_id)
-                
-                manager.user_info[user_id] = {
-                    "userName": user_name,
-                    "communityName": data.get("communityName", ""),
-                    "communityImage": data.get("communityImage", ""),
-                    "communityDescription": data.get("communityDescription", "")
-                }
-                
-                # Send ready signal
-                await websocket.send_json({
-                    "type": "ready",
-                    "userId": user_id,
-                    "communityId": community_id
-                })
-                
-                # Notify others
-                await manager.broadcast_message(community_id, {
-                    "type": "user_joined",
-                    "userId": user_id,
-                    "userName": user_name
-                })
-                
-                logger.info(f"User {user_name} ({user_id}) joined community {community_id}")
-            
-            elif message_type == "message":
-                if not user_id:
-                    await websocket.send_json({
-                        "type": "error",
-                        "error": "Not authenticated. Send 'hello' first."
-                    })
-                    continue
-                
+            if message_type == "message":
                 content = data.get("content", "").strip()
                 if not content:
                     continue
@@ -205,7 +204,7 @@ async def websocket_endpoint(websocket: WebSocket, community_id: str):
                 
                 manager.add_message(community_id, message)
                 
-                # Broadcast to all users in community
+                # Broadcast to all users in community (including sender)
                 await manager.broadcast_message(community_id, {
                     "type": "message",
                     "message": message.dict()
@@ -214,9 +213,6 @@ async def websocket_endpoint(websocket: WebSocket, community_id: str):
                 logger.info(f"Message from {user_name} in {community_id}: {content[:50]}")
             
             elif message_type == "typing":
-                if not user_id:
-                    continue
-                
                 is_typing = data.get("isTyping", False)
                 
                 if is_typing:
@@ -225,13 +221,13 @@ async def websocket_endpoint(websocket: WebSocket, community_id: str):
                     if community_id in manager.typing_users:
                         manager.typing_users[community_id].discard(user_id)
                 
-                # Broadcast typing status
+                # Broadcast typing status (exclude sender)
                 await manager.broadcast_message(community_id, {
                     "type": "typing",
                     "userId": user_id,
                     "userName": user_name,
                     "isTyping": is_typing
-                })
+                }, exclude_user=user_id)
             
             else:
                 await websocket.send_json({
