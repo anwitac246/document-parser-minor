@@ -11,5 +11,9 @@ PyMuPDF
 requests
 beautifulsoup4
 SpeechRecognition
-httpx
+httpx==0.24.1
 pydub
+sentence-transformers
+faiss-cpu
+numpy
+torch

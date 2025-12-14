@@ -216,11 +216,40 @@ export default function ChatBot() {
   const [error, setError] = useState<string | null>(null);
   const [mounted, setMounted] = useState(false);
   const [glossaryTerms, setGlossaryTerms] = useState<{ [key: string]: { definition: string; context?: string } }>({});
+  const [mode, setMode] = useState<'document' | 'scheme'>('document');
+  const [showSchemeForm, setShowSchemeForm] = useState(false);
+  const [schemeProfile, setSchemeProfile] = useState({
+    age: '',
+    gender: '',
+    family_income: '',
+    caste: '',
+    occupation: '',
+    residence: '',
+    state: '',
+    interests: ''
+  });
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const recognitionRef = useRef<any>(null);
   const synthRef = useRef<any>(null);
+
+  // Helper function to sanitize Firebase keys
+  const sanitizeFirebaseKey = (key: string): string => {
+    return key.replace(/[.#$\/\[\]]/g, '_');
+  };
+
+  // Helper function to sanitize terms object
+  const sanitizeTermsForFirebase = (terms: { [key: string]: { definition: string; context?: string } } | undefined): { [key: string]: { definition: string; context?: string } } | undefined => {
+    if (!terms) return undefined;
+    
+    const sanitized: { [key: string]: { definition: string; context?: string } } = {};
+    Object.keys(terms).forEach(key => {
+      const sanitizedKey = sanitizeFirebaseKey(key);
+      sanitized[sanitizedKey] = terms[key];
+    });
+    return sanitized;
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -411,7 +440,7 @@ export default function ChatBot() {
           content: msg.content,
           timestamp: msg.timestamp,
           ...(msg.file && { file: msg.file }),
-          ...(msg.terms && { terms: msg.terms })
+          ...(msg.terms && { terms: sanitizeTermsForFirebase(msg.terms) })
         };
       });
 
@@ -569,6 +598,94 @@ export default function ChatBot() {
     }
   };
 
+  const handleSchemeRecommendation = async () => {
+    const { age, gender, family_income, caste, occupation, residence, state, interests } = schemeProfile;
+    
+    if (!age || !gender || !family_income || !caste || !occupation || !residence || !state || !interests) {
+      setError('Please fill in all fields');
+      return;
+    }
+
+    const userMessage: Message = {
+      id: Date.now(),
+      type: 'user',
+      content: `Find government schemes for:\nAge: ${age}\nGender: ${gender}\nIncome: ₹${family_income}\nCaste: ${caste}\nOccupation: ${occupation}\nResidence: ${residence}\nState: ${state}\nInterests: ${interests}`,
+      timestamp: new Date().toISOString()
+    };
+
+    const newMessages = [...messages, userMessage];
+    setMessages(newMessages);
+    setShowSchemeForm(false);
+    setIsTyping(true);
+    setError(null);
+
+    try {
+      const response = await fetch('http://localhost:8000/schemes/recommend', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          age: parseInt(age),
+          gender: gender.toLowerCase(),
+          family_income: parseInt(family_income),
+          caste: caste.toUpperCase(),
+          occupation: occupation.toLowerCase(),
+          residence: residence.toLowerCase(),
+          state: state,
+          interests: interests
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.detail || `HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+
+      const botMessage: Message = {
+        id: Date.now() + 1,
+        type: 'bot',
+        content: data.response,
+        timestamp: new Date().toISOString()
+      };
+
+      const updatedMessages = [...newMessages, botMessage];
+      setMessages(updatedMessages);
+
+      if (!temporaryMode && database && user) {
+        await saveMessagesToFirebase(updatedMessages);
+      }
+
+      setSchemeProfile({
+        age: '',
+        gender: '',
+        family_income: '',
+        caste: '',
+        occupation: '',
+        residence: '',
+        state: '',
+        interests: ''
+      });
+
+    } catch (error: any) {
+      console.error('Error:', error);
+      setError(error.message || 'Failed to get scheme recommendations');
+      
+      const errorMessage: Message = {
+        id: Date.now() + 1,
+        type: 'bot',
+        content: `Sorry, I encountered an error: ${error.message}. Please try again.`,
+        timestamp: new Date().toISOString()
+      };
+      
+      setMessages([...newMessages, errorMessage]);
+    } finally {
+      setIsTyping(false);
+    }
+  };
+
   const handleSignOut = async () => {
     try {
       await signOut(auth);
@@ -676,9 +793,30 @@ export default function ChatBot() {
               backgroundPosition: 'center'
             } : {}}
           >
-            <h1 className={`text-xl font-semibold ${darkMode ? 'text-blue-400' : 'text-[#1E8DD0]'}`}>
-              Legal Document Assistant
-            </h1>
+            <div className="flex items-center justify-between">
+              <h1 className={`text-xl font-semibold ${darkMode ? 'text-blue-400' : 'text-[#1E8DD0]'}`}>
+                {mode === 'document' ? 'Legal Document Assistant' : 'Government Scheme Recommender'}
+              </h1>
+              
+              <div className={`flex items-center space-x-2 px-3 py-1.5 rounded-full ${darkMode ? 'bg-gray-900 border border-blue-500' : 'bg-gray-100 border border-gray-300'}`}>
+                <button
+                  onClick={() => { setMode('document'); setShowSchemeForm(false); }}
+                  className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${mode === 'document'
+                    ? darkMode ? 'bg-blue-600 text-white' : 'bg-[#1E8DD0] text-white'
+                    : darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}
+                >
+                  Document
+                </button>
+                <button
+                  onClick={() => { setMode('scheme'); setShowSchemeForm(false); }}
+                  className={`px-4 py-1.5 rounded-full text-sm font-medium transition-all ${mode === 'scheme'
+                    ? darkMode ? 'bg-blue-600 text-white' : 'bg-[#1E8DD0] text-white'
+                    : darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}
+                >
+                  Schemes
+                </button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -697,12 +835,31 @@ export default function ChatBot() {
                   loop={true}
                 />
               </div>
-              <h3 className="text-3xl font-extrabold mb-2 bg-clip-text text-transparent bg-gradient-to-r from-[#62D5DE] to-[#1E8DD0]">
-                Confused by Legal Jargon?
-              </h3>
-              <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
-                Upload a document or paste a URL to analyze legal content
-              </p>
+              {mode === 'document' ? (
+                <>
+                  <h3 className="text-3xl font-extrabold mb-2 bg-clip-text text-transparent bg-gradient-to-r from-[#62D5DE] to-[#1E8DD0]">
+                    Confused by Legal Jargon?
+                  </h3>
+                  <p className={`${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Upload a document or paste a URL to analyze legal content
+                  </p>
+                </>
+              ) : (
+                <>
+                  <h3 className="text-3xl font-extrabold mb-2 bg-clip-text text-transparent bg-gradient-to-r from-[#62D5DE] to-[#1E8DD0]">
+                    Find Your Perfect Scheme
+                  </h3>
+                  <p className={`mb-4 ${darkMode ? 'text-gray-400' : 'text-gray-500'}`}>
+                    Get personalized government scheme recommendations
+                  </p>
+                  <button
+                    onClick={() => setShowSchemeForm(true)}
+                    className={`px-6 py-3 rounded-lg font-semibold ${darkMode ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-[#1E8DD0] hover:bg-[#43B3D8] text-white'}`}
+                  >
+                    Start Finding Schemes
+                  </button>
+                </>
+              )}
             </div>
           )}
 
@@ -761,90 +918,216 @@ export default function ChatBot() {
       </div>
 
       <div className={`fixed bottom-0 right-0 left-0 transition-all duration-300 ${showSidebar ? 'ml-64' : 'ml-18'} z-30`}>
-        <div className={`p-4 border-t ${darkMode ? 'bg-black border-blue-500' : 'bg-white border-gray-200'}`}
-          style={!darkMode ? {
-            backgroundImage: "url(/chatbot-bg.png)",
-            backgroundSize: '100% 100%',
-            backgroundPosition: 'center'
-          } : {}}
-        >
-          {uploadedFile && (
-            <div className={`mb-3 p-3 rounded-lg flex items-center justify-between ${darkMode ? 'bg-blue-950 border border-blue-500 text-white' : 'bg-gray-100'}`}>
-              <div className="flex items-center space-x-2">
-                <File className={`h-5 w-5 ${darkMode ? 'text-blue-400' : ''}`} />
-                <span className="text-sm">{uploadedFile.name}</span>
+        {showSchemeForm && mode === 'scheme' && (
+          <div className={`p-4 border-t ${darkMode ? 'bg-black border-blue-500' : 'bg-white border-gray-200'}`}
+            style={!darkMode ? {
+              backgroundImage: "url(/chatbot-bg.png)",
+              backgroundSize: '100% 100%',
+              backgroundPosition: 'center'
+            } : {}}
+          >
+            <div className="max-w-4xl mx-auto">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className={`text-lg font-semibold ${darkMode ? 'text-white' : 'text-gray-900'}`}>
+                  Tell us about yourself
+                </h3>
+                <button
+                  onClick={() => setShowSchemeForm(false)}
+                  className={`text-2xl ${darkMode ? 'text-gray-400 hover:text-white' : 'text-gray-600 hover:text-gray-900'}`}
+                >
+                  ×
+                </button>
               </div>
-              <button onClick={() => setUploadedFile(null)} className={`p-1 rounded transition-colors ${darkMode ? 'hover:bg-blue-900 text-blue-400' : 'hover:bg-gray-200'}`}>×</button>
+              
+              <div className="grid grid-cols-2 gap-3">
+                <input
+                  type="number"
+                  placeholder="Age"
+                  value={schemeProfile.age}
+                  onChange={(e) => setSchemeProfile({...schemeProfile, age: e.target.value})}
+                  className={`px-4 py-2 rounded-lg border ${darkMode ? 'bg-gray-900 border-blue-500 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'}`}
+                />
+                <select
+                  value={schemeProfile.gender}
+                  onChange={(e) => setSchemeProfile({...schemeProfile, gender: e.target.value})}
+                  className={`px-4 py-2 rounded-lg border ${darkMode ? 'bg-gray-900 border-blue-500 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                >
+                  <option value="">Select Gender</option>
+                  <option value="male">Male</option>
+                  <option value="female">Female</option>
+                  <option value="other">Other</option>
+                </select>
+                
+                <input
+                  type="number"
+                  placeholder="Annual Family Income (₹)"
+                  value={schemeProfile.family_income}
+                  onChange={(e) => setSchemeProfile({...schemeProfile, family_income: e.target.value})}
+                  className={`px-4 py-2 rounded-lg border ${darkMode ? 'bg-gray-900 border-blue-500 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'}`}
+                />
+                <select
+                  value={schemeProfile.caste}
+                  onChange={(e) => setSchemeProfile({...schemeProfile, caste: e.target.value})}
+                  className={`px-4 py-2 rounded-lg border ${darkMode ? 'bg-gray-900 border-blue-500 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                >
+                  <option value="">Select Caste</option>
+                  <option value="SC">SC</option>
+                  <option value="ST">ST</option>
+                  <option value="OBC">OBC</option>
+                  <option value="General">General</option>
+                </select>
+                
+                <select
+                  value={schemeProfile.occupation}
+                  onChange={(e) => setSchemeProfile({...schemeProfile, occupation: e.target.value})}
+                  className={`px-4 py-2 rounded-lg border ${darkMode ? 'bg-gray-900 border-blue-500 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                >
+                  <option value="">Select Occupation</option>
+                  <option value="student">Student</option>
+                  <option value="farmer">Farmer</option>
+                  <option value="worker">Worker</option>
+                  <option value="unemployed">Unemployed</option>
+                  <option value="other">Other</option>
+                </select>
+                <select
+                  value={schemeProfile.residence}
+                  onChange={(e) => setSchemeProfile({...schemeProfile, residence: e.target.value})}
+                  className={`px-4 py-2 rounded-lg border ${darkMode ? 'bg-gray-900 border-blue-500 text-white' : 'bg-white border-gray-300 text-gray-900'}`}
+                >
+                  <option value="">Select Residence</option>
+                  <option value="rural">Rural</option>
+                  <option value="urban">Urban</option>
+                </select>
+                
+                <input
+                  type="text"
+                  placeholder="State (e.g., Karnataka, Delhi)"
+                  value={schemeProfile.state}
+                  onChange={(e) => setSchemeProfile({...schemeProfile, state: e.target.value})}
+                  className={`px-4 py-2 rounded-lg border ${darkMode ? 'bg-gray-900 border-blue-500 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'}`}
+                />
+                <input
+                  type="text"
+                  placeholder="Interests (e.g., education, healthcare)"
+                  value={schemeProfile.interests}
+                  onChange={(e) => setSchemeProfile({...schemeProfile, interests: e.target.value})}
+                  className={`px-4 py-2 rounded-lg border ${darkMode ? 'bg-gray-900 border-blue-500 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'}`}
+                />
+              </div>
+              
+              <button
+                onClick={handleSchemeRecommendation}
+                className={`w-full mt-4 px-6 py-3 rounded-lg font-semibold ${darkMode ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-[#1E8DD0] hover:bg-[#43B3D8] text-white'}`}
+              >
+                Find Matching Schemes
+              </button>
             </div>
-          )}
+          </div>
+        )}
+        
+        {mode === 'document' && (
+          <div className={`p-4 border-t ${darkMode ? 'bg-black border-blue-500' : 'bg-white border-gray-200'}`}
+            style={!darkMode ? {
+              backgroundImage: "url(/chatbot-bg.png)",
+              backgroundSize: '100% 100%',
+              backgroundPosition: 'center'
+            } : {}}
+          >
+            {uploadedFile && (
+              <div className={`mb-3 p-3 rounded-lg flex items-center justify-between ${darkMode ? 'bg-blue-950 border border-blue-500 text-white' : 'bg-gray-100'}`}>
+                <div className="flex items-center space-x-2">
+                  <File className={`h-5 w-5 ${darkMode ? 'text-blue-400' : ''}`} />
+                  <span className="text-sm">{uploadedFile.name}</span>
+                </div>
+                <button onClick={() => setUploadedFile(null)} className={`p-1 rounded transition-colors ${darkMode ? 'hover:bg-blue-900 text-blue-400' : 'hover:bg-gray-200'}`}>×</button>
+              </div>
+            )}
 
-          {showUrlInput && (
-            <div className="mb-3">
-              <input
-                type="url"
-                value={urlInput}
-                onChange={(e) => setUrlInput(e.target.value)}
-                placeholder="Enter URL to analyze..."
-                className={`w-full px-4 py-2 rounded-lg border transition-colors ${darkMode ? 'bg-gray-900 border-blue-500 text-white placeholder-gray-400' : 'bg-white border-gray-300'}`}
+            {showUrlInput && (
+              <div className="mb-3">
+                <input
+                  type="url"
+                  value={urlInput}
+                  onChange={(e) => setUrlInput(e.target.value)}
+                  placeholder="Enter URL to analyze..."
+                  className={`w-full px-4 py-2 rounded-lg border transition-colors ${darkMode ? 'bg-gray-900 border-blue-500 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'}`}
+                />
+              </div>
+            )}
+
+            <div className="flex items-center space-x-3">
+              <button
+                onClick={() => fileInputRef.current?.click()}
+                className={`p-3 rounded-full transition-colors ${darkMode ? 'bg-blue-950 hover:bg-blue-900 border border-blue-500 text-blue-400' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
+              >
+                <Upload className="h-5 w-5" />
+              </button>
+
+              <button
+                onClick={() => setShowUrlInput(!showUrlInput)}
+                className={`p-3 rounded-full transition-colors ${darkMode ? 'bg-blue-950 hover:bg-blue-900 border border-blue-500 text-blue-400' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
+              >
+                <LinkIcon className="h-5 w-5" />
+              </button>
+
+              <button
+                onClick={isListening ? stopListening : startListening}
+                className={`p-3 rounded-full transition-colors ${isListening ? 'bg-red-500 text-white' : darkMode ? 'bg-blue-950 hover:bg-blue-900 border border-blue-500 text-blue-400' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
+              >
+                {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
+              </button>
+
+              <textarea
+                value={inputText}
+                onChange={(e) => setInputText(e.target.value)}
+                onKeyPress={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    sendMessage();
+                  }
+                }}
+                placeholder="Type your message..."
+                className={`flex-1 px-4 py-3 rounded-2xl border resize-none transition-colors ${darkMode ? 'bg-gray-900 border-blue-500 text-white placeholder-gray-400' : 'bg-white border-gray-300 text-gray-900 placeholder-gray-500'}`}
+                rows={1}
               />
+
+              <button
+                onClick={sendMessage}
+                disabled={!inputText.trim() && !uploadedFile && !urlInput.trim()}
+                className={`p-3 rounded-full transition-colors ${inputText.trim() || uploadedFile || urlInput.trim() 
+                  ? darkMode ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-[#43B3D8] hover:bg-[#37A6D5] text-white' 
+                  : darkMode ? 'bg-gray-800 text-gray-600 border border-gray-700' : 'bg-gray-300 text-gray-500'}`}
+              >
+                <Send className="h-5 w-5" />
+              </button>
             </div>
-          )}
 
-          <div className="flex items-center space-x-3">
-            <button
-              onClick={() => fileInputRef.current?.click()}
-              className={`p-3 rounded-full transition-colors ${darkMode ? 'bg-blue-950 hover:bg-blue-900 border border-blue-500 text-blue-400' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
-            >
-              <Upload className="h-5 w-5" />
-            </button>
-
-            <button
-              onClick={() => setShowUrlInput(!showUrlInput)}
-              className={`p-3 rounded-full transition-colors ${darkMode ? 'bg-blue-950 hover:bg-blue-900 border border-blue-500 text-blue-400' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
-            >
-              <LinkIcon className="h-5 w-5" />
-            </button>
-
-            <button
-              onClick={isListening ? stopListening : startListening}
-              className={`p-3 rounded-full transition-colors ${isListening ? 'bg-red-500 text-white' : darkMode ? 'bg-blue-950 hover:bg-blue-900 border border-blue-500 text-blue-400' : 'bg-gray-200 hover:bg-gray-300 text-gray-700'}`}
-            >
-              {isListening ? <MicOff className="h-5 w-5" /> : <Mic className="h-5 w-5" />}
-            </button>
-
-            <textarea
-              value={inputText}
-              onChange={(e) => setInputText(e.target.value)}
-              onKeyPress={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  sendMessage();
-                }
-              }}
-              placeholder="Type your message..."
-              className={`flex-1 px-4 py-3 rounded-2xl border resize-none transition-colors ${darkMode ? 'bg-gray-900 border-blue-500 text-white placeholder-gray-400' : 'bg-white border-gray-300'}`}
-              rows={1}
+            <input
+              ref={fileInputRef}
+              type="file"
+              onChange={handleFileUpload}
+              accept=".pdf,.docx,image/*"
+              className="hidden"
             />
-
+          </div>
+        )}
+        
+        {mode === 'scheme' && !showSchemeForm && (
+          <div className={`p-4 border-t ${darkMode ? 'bg-black border-blue-500' : 'bg-white border-gray-200'}`}
+            style={!darkMode ? {
+              backgroundImage: "url(/chatbot-bg.png)",
+              backgroundSize: '100% 100%',
+              backgroundPosition: 'center'
+            } : {}}
+          >
             <button
-              onClick={sendMessage}
-              disabled={!inputText.trim() && !uploadedFile && !urlInput.trim()}
-              className={`p-3 rounded-full transition-colors ${inputText.trim() || uploadedFile || urlInput.trim() 
-                ? darkMode ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-[#43B3D8] hover:bg-[#37A6D5] text-white' 
-                : darkMode ? 'bg-gray-800 text-gray-600 border border-gray-700' : 'bg-gray-300 text-gray-500'}`}
+              onClick={() => setShowSchemeForm(true)}
+              className={`w-full px-6 py-3 rounded-lg font-semibold ${darkMode ? 'bg-blue-600 hover:bg-blue-700 text-white' : 'bg-[#1E8DD0] hover:bg-[#43B3D8] text-white'}`}
             >
-              <Send className="h-5 w-5" />
+              Fill Profile to Get Scheme Recommendations
             </button>
           </div>
-
-          <input
-            ref={fileInputRef}
-            type="file"
-            onChange={handleFileUpload}
-            accept=".pdf,.docx,image/*"
-            className="hidden"
-          />
-        </div>
+        )}
       </div>
     </div>
   );
